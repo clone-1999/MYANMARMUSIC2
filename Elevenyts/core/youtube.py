@@ -27,7 +27,7 @@ class YouTube:
         self.warned = False
 
         # --- ပြင်ဆင်သတ်မှတ်ထားသော API နှင့် COOKIE URL များ ---
-        self.api_url = "https://artistbots-api.onrender.com"  # သင့်ရဲ့ API URL
+        self.api_url = "https://artistbots.onrender.com"  # သင့်ရဲ့ API URL
         self.api_key = "Artistbots3eueiX3jMWzy1ZLdYIqDWg"  # <--- သင်ရလာတဲ့ API Key ကို ဒီနေရာမှာ ထည့်ပါ
         self.cookie_url = "https://gist.githubusercontent.com/min-9876/69ba1894455f22b426ddccdd87dd126b/raw/69513d3263ca19563ed0c1f2430fa4a1e38bd8ab/gistfile1.txt"
         
