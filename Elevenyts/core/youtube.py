@@ -1,4 +1,4 @@
-# youtube.py - YouTube Download & Search Handler (NexGenBots API First Optimized)
+# youtube.py - YouTube Download & Search Handler (Fixed Async Loop Crash)
 
 import os
 import re
@@ -8,6 +8,7 @@ import yt_dlp
 import random
 import asyncio
 import aiohttp
+import requests  # Async loop ပြဿနာ ကင်းဝေးစေရန် သုံးထားသည်
 from dataclasses import replace
 from pathlib import Path
 from typing import Optional, Union
@@ -27,12 +28,12 @@ class YouTube:
         self.warned = False
 
         # --- ပြင်ဆင်သတ်မှတ်ထားသော API နှင့် COOKIE URL များ ---
-        self.api_url = "https://console.nexgenbots.xyz"  # NexGenBots API သို့ ပြောင်းလဲထားသည်
-        self.api_key = "30DxNexGenBots4688e6"  # <--- သင့်ရဲ့ API Key အပြည့်အစုံကို ဒီနေရာမှာ ထည့်ပေးပါဗျာ ⚠️
+        self.api_url = "https://console.nexgenbots.xyz"
+        self.api_key = "30DxNexGenBots4688e6"  # <--- သင့်ရဲ့ NexGenBots API Key ကို ဒီနေရာမှာ ထည့်ပေးပါဗျာ ⚠️
         self.cookie_url = "https://gist.githubusercontent.com/min-9876/69ba1894455f22b426ddccdd87dd126b/raw/69513d3263ca19563ed0c1f2430fa4a1e38bd8ab/gistfile1.txt"
         
-        self.enable_api_fallback = True  # မြန်နှုန်းမြင့်ရန်အတွက် API ကို အဓိက ဦးစားပေးသုံးမည်
-        self.api_timeout = getattr(config, "API_TIMEOUT", 30)  # ပိုမြန်စေရန် timeout ကို 30 စက္ကန့်သို့ လျှော့ချထားသည်
+        self.enable_api_fallback = True  
+        self.api_timeout = getattr(config, "API_TIMEOUT", 30)  
         self.api_stream_timeout = getattr(config, "API_STREAM_TIMEOUT", 120)
         # --------------------------------------------------
 
@@ -50,8 +51,8 @@ class YouTube:
 
         logger.info(f"⚡ YouTube API First Mode Enabled: {self.api_url}")
         
-        # Cookie ကို အနောက်ကွယ်ကနေပဲ ပုံမှန်အတိုင်း ဒေါင်းလုဒ်ဆွဲထားမည် (Bot စတက်ချိန် ကြန့်ကြာမှု မရှိစေရန်)
-        asyncio.create_task(self.save_cookies([self.cookie_url]))
+        # Crash ဖြစ်စေသော asyncio.create_task ကို ဖြုတ်ပြီး ရိုးရိုး sync စနစ်ဖြင့် ဆွဲခိုင်းထားသည်
+        self.sync_save_cookies([self.cookie_url])
 
     def _locate_download_file(self, video_id: str, video: bool = False) -> Optional[str]:
         """Locate any completed download file for a video id."""
@@ -100,8 +101,8 @@ class YouTube:
         cookie_file = f"Elevenyts/cookies/{random.choice(self.cookies)}"
         return cookie_file
 
-    async def save_cookies(self, urls: list[str]) -> None:
-        """Save cookies from URLs to files."""
+    def sync_save_cookies(self, urls: list[str]) -> None:
+        """Crash ကာကွယ်ရန် သမရိုးကျ (Non-async) စနစ်ဖြင့် Cookie ဖိုင် သိမ်းဆည်းခြင်း"""
         cookies_dir = Path("Elevenyts/cookies")
         cookies_dir.mkdir(parents=True, exist_ok=True)
         
@@ -111,16 +112,16 @@ class YouTube:
                 link = url.replace("pastebin.com", "pastebin.com/raw") if "pastebin.com" in url else url
                 link = link.replace("batbin.me", "batbin.me/raw") if "batbin.me" in url else link
                 
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(link, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-                        if resp.status == 200:
-                            content = await resp.read()
-                            if content and len(content) > 50:
-                                with open(path, "wb") as fw:
-                                    fw.write(content)
-                                cookie_filename = path.name
-                                if cookie_filename not in self.cookies:
-                                    self.cookies.append(cookie_filename)
+                # Bot စတက်ချိန် အချိန်မကြာစေရန် ခပ်မြန်မြန် ဆွဲယူမည်
+                response = requests.get(link, timeout=10)
+                if response.status_code == 200:
+                    content = response.content
+                    if content and len(content) > 50:
+                        with open(path, "wb") as fw:
+                            fw.write(content)
+                        cookie_filename = path.name
+                        if cookie_filename not in self.cookies:
+                            self.cookies.append(cookie_filename)
             except Exception:
                 pass
         self.checked = True
@@ -320,7 +321,7 @@ class YouTube:
         """Download audio/video prioritizing the API for maximum speed."""
         url = self.base + video_id
 
-        # 1. တိုက်ရိုက် Live Stream ဖြစ်လျှင် (yt-dlp ဖြင့် ဆွဲမည်)
+        # 1. တိုက်ရိုက် Live Stream ဖြစ်လျှင်
         if is_live:
             cookie = await self.get_cookies_async()
             ydl_opts = {
@@ -349,8 +350,8 @@ class YouTube:
             if api_result:
                 return api_result
 
-        # 4. API ပါ လုံးဝအဆင်မပြေတော့မှသာ Local yt-dlp ကို Fallback အနေဖြင့် သုံးမည်
-        logger.info(f"🔄 API Failed or Disabled. Falling back to local yt-dlp for {video_id}")
+        # 4. API ပါ လုံးဝအဆင်မပြေတော့မှသာ Local yt-dlp ကို သုံးမည်
+        logger.info(f"🔄 API Failed. Falling back to local yt-dlp for {video_id}")
         async with self._download_semaphore:
             cookie = await self.get_cookies_async()
             base_opts = {
