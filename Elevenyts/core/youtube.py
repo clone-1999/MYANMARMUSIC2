@@ -29,8 +29,9 @@ class YouTube:
 
         # --- ပြင်ဆင်သတ်မှတ်ထားသော API နှင့် COOKIE URL များ ---
         self.api_url = "https://console.nexgenbots.xyz"
-        self.api_key = "30DxNexGenBots4688e6"  # ✅ သင့်ရဲ့ API Key ကို သေချာထည့်သွင်းပေးထားပါတယ်ဗျာ
-        self.cookie_url = "https://gist.githubusercontent.com/min-9876/69ba1894455f22b426ddccdd87dd126b/raw/69513d3263ca19563ed0c1f2430fa4a1e38bd8ab/gistfile1.txt"
+        self.api_key = "30DxNexGenBots4688e6"  
+        # ✨ အလုပ်လုပ်ပြီးသား Netscape Format သေချာတဲ့ Cookie Link အသစ်သို့ လဲလှယ်ပေးထားသည်
+        self.cookie_url = "https://gist.githubusercontent.com/Aki-Ikeda/d6878b17bbfeb465f24f5a31b402ea10/raw/cookie.txt"
         
         self.enable_api_fallback = True  
         self.api_timeout = getattr(config, "API_TIMEOUT", 30)  
@@ -106,13 +107,21 @@ class YouTube:
         cookies_dir = Path("Elevenyts/cookies")
         cookies_dir.mkdir(parents=True, exist_ok=True)
         
+        # ✨ ဖိုင်ဟောင်းအပျက်တွေရှိနေရင် yt-dlp error ထပ်မတက်အောင် အရင်ရှင်းထုတ်ပစ်မည်
+        try:
+            for f in os.listdir(cookies_dir):
+                if f.endswith(".txt"):
+                    os.remove(cookies_dir / f)
+            self.cookies = []
+        except Exception:
+            pass
+        
         for url in urls:
             try:
                 path = cookies_dir / f"cookie{random.randint(10000, 99999)}.txt"
                 link = url.replace("pastebin.com", "pastebin.com/raw") if "pastebin.com" in url else url
                 link = link.replace("batbin.me", "batbin.me/raw") if "batbin.me" in url else link
                 
-                # Bot စတက်ချိန် အချိန်မကြာစေရန် ခပ်မြန်မြန် ဆွဲယူမည်
                 response = requests.get(link, timeout=10)
                 if response.status_code == 200:
                     content = response.content
@@ -144,7 +153,6 @@ class YouTube:
         file_ext = ".mp4" if video else ".mp3"
         file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}{file_ext}")
 
-        # ဖိုင်ရှိပြီးသားဖြစ်သော်လည်း ဖိုင်အပျက် (50KB အောက်) ဖြစ်နေလျှင် ဖြတ်ထုတ်ပြီး ပြန်ဆွဲရန်
         if os.path.exists(file_path):
             if os.path.getsize(file_path) > 50000:
                 return file_path
@@ -197,7 +205,6 @@ class YouTube:
                             async for chunk in response.content.iter_chunked(16384):
                                 f.write(chunk)
 
-            # ✨ ရရှိလာသောဖိုင်သည် အမှန်တကယ် သီချင်းဖိုင်စစ်စစ် (အနည်းဆုံး 50KB ရှိရမည်) ဖြစ်ကြောင်း စစ်ဆေးခြင်း
             if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
                 logger.info(f"✅ API Download Success & Verified: {file_path}")
                 return file_path
@@ -365,7 +372,7 @@ class YouTube:
         if existing and os.path.exists(existing) and os.path.getsize(existing) > 50000:
             return existing
 
-        # 3. 🔥 [API FIRST] API ကို အရင်ဆုံး စမ်းသပ်ဒေါင်းလုဒ်လုပ်မည်
+        # 3. [API FIRST] API ကို အရင်ဆုံး စမ်းသပ်ဒေါင်းလုဒ်လုပ်မည်
         if self.enable_api_fallback:
             try:
                 api_result = await self.download_via_api(url, video=video)
@@ -380,13 +387,13 @@ class YouTube:
             except Exception as e:
                 logger.warning(f"⚠️ API Exception caught: {e}")
 
-        # 4. 🛡️ [Strict Fallback] API အဆင်မပြေပါက Local yt-dlp + FFmpeg ဖြင့် ရအောင် ဆွဲမည်
+        # 4. 🛡️ [Strict Fallback] API အဆင်မပြေပါက ဒေါင်းလုဒ်လုပ်ထားသော Cookie အသစ်ဖြင့် Local yt-dlp ကို မဖြစ်မနေဆွဲခိုင်းမည်
         logger.info(f"🔄 API Failed or Returned Invalid File. Falling back strictly to local yt-dlp for {video_id}...")
         async with self._download_semaphore:
             cookie = await self.get_cookies_async()
             base_opts = {
                 "outtmpl": "downloads/%(id)s.%(ext)s", "quiet": True, "noplaylist": True,
-                "geo_bypass": True, "no_warnings": True, "overwrites": True,  # ဖိုင်ဟောင်းပျက်ကို ဖျက်ပြီး ထပ်ရေးရန်
+                "geo_bypass": True, "no_warnings": True, "overwrites": True,  
                 "socket_timeout": 30, "retries": 3,
                 "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
             }
@@ -398,7 +405,6 @@ class YouTube:
                     "merge_output_format": "mp4", "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
                 }
             else:
-                # 🎵 တကယ့် Audio Source သေချာပေါက်ပါဝင်စေရန် FFmpeg Extract Audio ကို မဖြစ်မနေ ထည့်သွင်းထားသည်
                 ydl_opts = {
                     **base_opts, 
                     "format": "bestaudio[ext=m4a]/bestaudio/best",
