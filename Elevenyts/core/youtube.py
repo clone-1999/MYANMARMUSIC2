@@ -27,8 +27,8 @@ class YouTube:
         self.warned = False
 
         # --- ပြင်ဆင်သတ်မှတ်ထားသော API နှင့် COOKIE URL များ ---
-        self.api_url = "https://artistbots.onrender.com"  # သင့်ရဲ့ API URL
-        self.api_key = "Artistbots3eueiX3jMWzy1ZLdYIqDWg"  # <--- သင်ရလာတဲ့ API Key ကို ဒီနေရာမှာ ထည့်ပါ
+        self.api_url = "https://artistbots.onrender.com"
+        self.api_key = "Artistbots3eueiX3jMWzy1ZLdYIqDWg"
         self.cookie_url = "https://gist.githubusercontent.com/min-9876/69ba1894455f22b426ddccdd87dd126b/raw/69513d3263ca19563ed0c1f2430fa4a1e38bd8ab/gistfile1.txt"
         
         self.enable_api_fallback = True
@@ -49,9 +49,6 @@ class YouTube:
         self._max_video_height = getattr(config, "VIDEO_MAX_HEIGHT", 720)
 
         logger.info(f"🔄 YouTube API fallback enabled: {self.api_url}")
-        
-        # Bot တက်လာတာနဲ့ Cookie URL ကနေ Cookie တွေကို အလိုအလျောက် ဒေါင်းလုဒ်ဆွဲခိုင်းခြင်း
-        asyncio.create_task(self.save_cookies([self.cookie_url]))
 
     def _locate_download_file(self, video_id: str, video: bool = False) -> Optional[str]:
         """Locate any completed download file for a video id."""
@@ -83,22 +80,25 @@ class YouTube:
             return path
         return None
 
-    def get_cookies(self):
-        """Get random cookie file from cookies directory."""
+    async def get_cookies_async(self):
+        """Asynchronously get cookie file, downloading if none exist."""
         if not self.checked:
             cookies_dir = "Elevenyts/cookies"
             if os.path.exists(cookies_dir):
                 for file in os.listdir(cookies_dir):
                     if file.endswith(".txt"):
-                        self.cookies.append(file)
+                        if file not in self.cookies:
+                            self.cookies.append(file)
             self.checked = True
         
+        # ကွတ်ကီးဖိုင် လုံးဝမရှိသေးရင် အလိုအလျောက် URL ကနေ လှမ်းဆွဲပေးမည်
         if not self.cookies:
             if not self.warned:
                 self.warned = True
-                logger.warning("🍪 Cookies are missing; downloads might fail. Retrying download...")
-                # Cookie မရှိသေးရင် ထပ်မံဒေါင်းလုဒ်ဆွဲဖို့ ကြိုးစားခိုင်းခြင်း
-                asyncio.create_task(self.save_cookies([self.cookie_url]))
+                logger.warning("🍪 Cookies are missing. Automatically downloading from URL...")
+            await self.save_cookies([self.cookie_url])
+        
+        if not self.cookies:
             return None
         
         cookie_file = f"Elevenyts/cookies/{random.choice(self.cookies)}"
@@ -184,13 +184,12 @@ class YouTube:
             logger.info(f"🔄 Trying API fallback for {video_id} (endpoint: {endpoint})")
             
             async with aiohttp.ClientSession() as session:
-                # API Key ကိုပါ Headers ထဲမှာဖြစ်စေ၊ Params ထဲမှာဖြစ်စေ လှမ်းပို့ပေးခြင်း
                 params = {
                     "url": f"https://youtu.be/{video_id}",
-                    "api_key": self.api_key  # Params ထဲတွင် API Key သယ်ဆောင်သွားခြင်း
+                    "api_key": self.api_key
                 }
                 headers = {
-                    "Authorization": f"Bearer {self.api_key}"  # Header ထဲတွင်လည်း ထည့်ပေးထားခြင်း
+                    "Authorization": f"Bearer {self.api_key}"
                 }
                 
                 async with session.get(
@@ -369,7 +368,7 @@ class YouTube:
         url = self.base + video_id
 
         if is_live:
-            cookie = self.get_cookies()
+            cookie = await self.get_cookies_async()
             ydl_opts = {
                 "quiet": True,
                 "no_warnings": True,
@@ -449,7 +448,7 @@ class YouTube:
                 return None
 
         async with self._download_semaphore:
-            cookie = self.get_cookies()
+            cookie = await self.get_cookies_async()
             base_opts = {
                 "outtmpl": "downloads/%(id)s.%(ext)s",
                 "quiet": True,
