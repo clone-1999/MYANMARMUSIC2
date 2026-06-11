@@ -1,4 +1,4 @@
-# youtube.py - YouTube Download & Search Handler (Fixed Async Loop Crash)
+# youtube.py - YouTube Download & Search Handler (Fixed Async Loop Crash & Verified API)
 
 import os
 import re
@@ -29,7 +29,7 @@ class YouTube:
 
         # --- ပြင်ဆင်သတ်မှတ်ထားသော API နှင့် COOKIE URL များ ---
         self.api_url = "https://console.nexgenbots.xyz"
-        self.api_key = "30DxNexGenBots4688e6"  # <--- သင့်ရဲ့ NexGenBots API Key ကို ဒီနေရာမှာ ထည့်ပေးပါဗျာ ⚠️
+        self.api_key = "30DxNexGenBots4688e6"  # ✅ သင့်ရဲ့ API Key ကို သေချာထည့်သွင်းပေးထားပါတယ်ဗျာ
         self.cookie_url = "https://gist.githubusercontent.com/min-9876/69ba1894455f22b426ddccdd87dd126b/raw/69513d3263ca19563ed0c1f2430fa4a1e38bd8ab/gistfile1.txt"
         
         self.enable_api_fallback = True  
@@ -127,7 +127,7 @@ class YouTube:
         self.checked = True
 
     async def download_via_api(self, link: str, video: bool = False) -> Optional[str]:
-        """Download audio/video directly using NexGenBots API (Fast Track)."""
+        """Download audio/video directly using NexGenBots API (Fast Track with Validation)."""
         if "v=" in link:
             video_id = link.split("v=")[-1].split("&")[0]
         elif "youtu.be" in link:
@@ -144,8 +144,15 @@ class YouTube:
         file_ext = ".mp4" if video else ".mp3"
         file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}{file_ext}")
 
+        # ဖိုင်ရှိပြီးသားဖြစ်သော်လည်း ဖိုင်အပျက် (5KB အောက်) ဖြစ်နေလျှင် ဖြတ်ထုတ်ပြီး ပြန်ဆွဲရန်
         if os.path.exists(file_path):
-            return file_path
+            if os.path.getsize(file_path) > 5000:
+                return file_path
+            else:
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
 
         endpoint = "/vdown" if video else "/download"
         
@@ -175,7 +182,7 @@ class YouTube:
                     
                     if 'application/json' in content_type:
                         data = await response.json()
-                        stream_url = data.get('stream_url') or data.get('url')
+                        stream_url = data.get('stream_url') or data.get('url') or data.get('data', {}).get('url')
                         
                         if not stream_url:
                             return None
@@ -185,16 +192,30 @@ class YouTube:
                                 with open(file_path, "wb") as f:
                                     async for chunk in file_response.content.iter_chunked(16384):
                                         f.write(chunk)
-                                logger.info(f"✅ API Download Success: {file_path}")
-                                return file_path
                     else:
                         with open(file_path, "wb") as f:
                             async for chunk in response.content.iter_chunked(16384):
                                 f.write(chunk)
-                        logger.info(f"✅ API Direct Download Success: {file_path}")
-                        return file_path
+
+            # ✨ [핵심 ပြင်ဆင်မှု] ရရှိလာသောဖိုင်သည် အမှန်တကယ် အသံဖိုင်ဖြစ်ကြောင်း စစ်ဆေးခြင်း (အနည်းဆုံး ၅KB ရှိရမည်)
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 5000:
+                logger.info(f"✅ API Download Success & Verified: {file_path}")
+                return file_path
+            else:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except Exception:
+                        pass
+                logger.warning(f"⚠️ API returned an invalid or empty file for {video_id}. Dropping to Local yt-dlp...")
+                return None
 
         except Exception as e:
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
             logger.debug(f"❌ NexGenBots API Download failed: {e}")
             return None
 
@@ -344,7 +365,7 @@ class YouTube:
         if existing:
             return existing
 
-        # 3. ⭐ [핵심 - API FIRST] Cookie နှင့် yt-dlp ကို မစောင့်တော့ဘဲ API ကို တိုက်ရိုက် ဦးစားပေးခေါ်ယူမည်
+        # 3. ⭐ [API FIRST] API ကို အရင်ဆုံး တိုက်ရိုက် ဦးစားပေးခေါ်ယူပြီး သေချာမှ ဖိုင်လမ်းကြောင်း ပြန်ပေးမည်
         if self.enable_api_fallback:
             api_result = await self.download_via_api(url, video=video)
             if api_result:
