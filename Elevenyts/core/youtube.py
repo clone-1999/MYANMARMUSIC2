@@ -1,4 +1,4 @@
-# youtube.py - YouTube Download & Search Handler
+# youtube.py - YouTube Download & Search Handler (NexGenBots API First Optimized)
 
 import os
 import re
@@ -27,12 +27,12 @@ class YouTube:
         self.warned = False
 
         # --- ပြင်ဆင်သတ်မှတ်ထားသော API နှင့် COOKIE URL များ ---
-        self.api_url = "https://artistbots.onrender.com"
-        self.api_key = "Artistbots3eueiX3jMWzy1ZLdYIqDWg"
+        self.api_url = "https://console.nexgenbots.xyz"  # NexGenBots API သို့ ပြောင်းလဲထားသည်
+        self.api_key = "30DxNexGenBots4688e6"  # <--- သင့်ရဲ့ API Key အပြည့်အစုံကို ဒီနေရာမှာ ထည့်ပေးပါဗျာ ⚠️
         self.cookie_url = "https://gist.githubusercontent.com/min-9876/69ba1894455f22b426ddccdd87dd126b/raw/69513d3263ca19563ed0c1f2430fa4a1e38bd8ab/gistfile1.txt"
         
-        self.enable_api_fallback = True
-        self.api_timeout = getattr(config, "API_TIMEOUT", 60)
+        self.enable_api_fallback = True  # မြန်နှုန်းမြင့်ရန်အတွက် API ကို အဓိက ဦးစားပေးသုံးမည်
+        self.api_timeout = getattr(config, "API_TIMEOUT", 30)  # ပိုမြန်စေရန် timeout ကို 30 စက္ကန့်သို့ လျှော့ချထားသည်
         self.api_stream_timeout = getattr(config, "API_STREAM_TIMEOUT", 120)
         # --------------------------------------------------
 
@@ -48,7 +48,10 @@ class YouTube:
         self._download_semaphore = asyncio.Semaphore(5)
         self._max_video_height = getattr(config, "VIDEO_MAX_HEIGHT", 720)
 
-        logger.info(f"🔄 YouTube API fallback enabled: {self.api_url}")
+        logger.info(f"⚡ YouTube API First Mode Enabled: {self.api_url}")
+        
+        # Cookie ကို အနောက်ကွယ်ကနေပဲ ပုံမှန်အတိုင်း ဒေါင်းလုဒ်ဆွဲထားမည် (Bot စတက်ချိန် ကြန့်ကြာမှု မရှိစေရန်)
+        asyncio.create_task(self.save_cookies([self.cookie_url]))
 
     def _locate_download_file(self, video_id: str, video: bool = False) -> Optional[str]:
         """Locate any completed download file for a video id."""
@@ -81,7 +84,7 @@ class YouTube:
         return None
 
     async def get_cookies_async(self):
-        """Asynchronously get cookie file, downloading if none exist."""
+        """Asynchronously get cookie file from cookies directory."""
         if not self.checked:
             cookies_dir = "Elevenyts/cookies"
             if os.path.exists(cookies_dir):
@@ -91,74 +94,39 @@ class YouTube:
                             self.cookies.append(file)
             self.checked = True
         
-        # ကွတ်ကီးဖိုင် လုံးဝမရှိသေးရင် အလိုအလျောက် URL ကနေ လှမ်းဆွဲပေးမည်
-        if not self.cookies:
-            if not self.warned:
-                self.warned = True
-                logger.warning("🍪 Cookies are missing. Automatically downloading from URL...")
-            await self.save_cookies([self.cookie_url])
-        
         if not self.cookies:
             return None
         
         cookie_file = f"Elevenyts/cookies/{random.choice(self.cookies)}"
-        logger.debug(f"Using cookie file: {cookie_file}")
         return cookie_file
 
     async def save_cookies(self, urls: list[str]) -> None:
         """Save cookies from URLs to files."""
-        logger.info("🍪 Saving cookies from urls...")
-        saved_count = 0
-        
         cookies_dir = Path("Elevenyts/cookies")
         cookies_dir.mkdir(parents=True, exist_ok=True)
         
         for url in urls:
             try:
                 path = cookies_dir / f"cookie{random.randint(10000, 99999)}.txt"
-                
-                if "pastebin.com" in url:
-                    link = url.replace("pastebin.com", "pastebin.com/raw")
-                elif "batbin.me" in url:
-                    link = url.replace("batbin.me", "batbin.me/raw")
-                else:
-                    link = url
+                link = url.replace("pastebin.com", "pastebin.com/raw") if "pastebin.com" in url else url
+                link = link.replace("batbin.me", "batbin.me/raw") if "batbin.me" in url else link
                 
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(link, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                        if resp.status != 200:
-                            logger.error(f"❌ Cookie download failed: HTTP {resp.status} from {url}")
-                            continue
-                        
-                        content = await resp.read()
-                        if not content or len(content) < 50:
-                            logger.error(f"❌ Cookie file empty or invalid from {url}")
-                            continue
-                        
-                        with open(path, "wb") as fw:
-                            fw.write(content)
-                        
-                        if path.exists() and path.stat().st_size > 0:
-                            saved_count += 1
-                            cookie_filename = path.name
-                            if cookie_filename not in self.cookies:
-                                self.cookies.append(cookie_filename)
-                            logger.info(f"✅ Saved: {cookie_filename} ({len(content)} bytes)")
-                            
-            except asyncio.TimeoutError:
-                logger.error(f"❌ Cookie download timeout from {url}")
-            except Exception as e:
-                logger.error(f"❌ Cookie download error from {url}: {e}")
-        
+                    async with session.get(link, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                        if resp.status == 200:
+                            content = await resp.read()
+                            if content and len(content) > 50:
+                                with open(path, "wb") as fw:
+                                    fw.write(content)
+                                cookie_filename = path.name
+                                if cookie_filename not in self.cookies:
+                                    self.cookies.append(cookie_filename)
+            except Exception:
+                pass
         self.checked = True
-        if saved_count > 0:
-            logger.info(f"✅ Cookies saved successfully! ({saved_count} file(s))")
 
     async def download_via_api(self, link: str, video: bool = False) -> Optional[str]:
-        """Download audio/video using Railway API (fallback when cookies fail)."""
-        if not self.enable_api_fallback:
-            return None
-
+        """Download audio/video directly using NexGenBots API (Fast Track)."""
         if "v=" in link:
             video_id = link.split("v=")[-1].split("&")[0]
         elif "youtu.be" in link:
@@ -181,7 +149,7 @@ class YouTube:
         endpoint = "/vdown" if video else "/download"
         
         try:
-            logger.info(f"🔄 Trying API fallback for {video_id} (endpoint: {endpoint})")
+            logger.info(f"🚀 [API FIRST] Tapping NexGenBots API for {video_id}...")
             
             async with aiohttp.ClientSession() as session:
                 params = {
@@ -199,7 +167,7 @@ class YouTube:
                     timeout=aiohttp.ClientTimeout(total=self.api_timeout),
                 ) as response:
                     if response.status != 200:
-                        logger.debug(f"API returned status {response.status}")
+                        logger.debug(f"⚠️ API returned status {response.status}")
                         return None
                     
                     content_type = response.headers.get('content-type', '')
@@ -211,31 +179,22 @@ class YouTube:
                         if not stream_url:
                             return None
                         
-                        logger.info(f"📥 Downloading from stream URL: {stream_url[:50]}...")
                         async with session.get(stream_url, timeout=aiohttp.ClientTimeout(total=self.api_stream_timeout)) as file_response:
-                            if file_response.status != 200:
-                                return None
-                            
-                            with open(file_path, "wb") as f:
-                                async for chunk in file_response.content.iter_chunked(16384):
-                                    f.write(chunk)
-                            
-                            logger.info(f"✅ API download successful: {file_path}")
-                            return file_path
+                            if file_response.status == 200:
+                                with open(file_path, "wb") as f:
+                                    async for chunk in file_response.content.iter_chunked(16384):
+                                        f.write(chunk)
+                                logger.info(f"✅ API Download Success: {file_path}")
+                                return file_path
                     else:
-                        logger.info("📥 Receiving direct binary download...")
                         with open(file_path, "wb") as f:
                             async for chunk in response.content.iter_chunked(16384):
                                 f.write(chunk)
-                        
-                        logger.info(f"✅ API download successful: {file_path}")
+                        logger.info(f"✅ API Direct Download Success: {file_path}")
                         return file_path
 
-        except asyncio.TimeoutError:
-            logger.debug(f"API timeout for {video_id}")
-            return None
         except Exception as e:
-            logger.debug(f"API download failed for {video_id}: {e}")
+            logger.debug(f"❌ NexGenBots API Download failed: {e}")
             return None
 
     def valid(self, url: str) -> bool:
@@ -246,19 +205,16 @@ class YouTube:
         """Extract YouTube URL from message."""
         messages = [message_1]
         link = None
-        
         if message_1.reply_to_message:
             messages.append(message_1.reply_to_message)
 
         for message in messages:
             text = message.text or message.caption or ""
-
             if message.entities:
                 for entity in message.entities:
                     if entity.type == enums.MessageEntityType.URL:
                         link = text[entity.offset: entity.offset + entity.length]
                         break
-
             if message.caption_entities:
                 for entity in message.caption_entities:
                     if entity.type == enums.MessageEntityType.TEXT_LINK:
@@ -313,8 +269,7 @@ class YouTube:
             self.search_cache[cache_key] = (track, current_time)
             
             if len(self.search_cache) > 100:
-                oldest_key = min(self.search_cache.keys(),
-                                 key=lambda k: self.search_cache[k][1])
+                oldest_key = min(self.search_cache.keys(), key=lambda k: self.search_cache[k][1])
                 del self.search_cache[oldest_key]
 
             return replace(track)
@@ -357,171 +312,72 @@ class YouTube:
                     continue
 
             return tracks
-        except KeyError as e:
-            raise Exception(f"Failed to parse playlist. YouTube may have changed their structure.")
         except Exception as e:
             logger.error(f"Playlist extraction error: {e}")
             raise
 
     async def download(self, video_id: str, is_live: bool = False, video: bool = False) -> Optional[str]:
-        """Download audio/video from YouTube."""
+        """Download audio/video prioritizing the API for maximum speed."""
         url = self.base + video_id
 
+        # 1. တိုက်ရိုက် Live Stream ဖြစ်လျှင် (yt-dlp ဖြင့် ဆွဲမည်)
         if is_live:
             cookie = await self.get_cookies_async()
             ydl_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "cookiefile": cookie,
-                "format": "bestaudio/best",
-                "noplaylist": True,
-                "socket_timeout": 20,
-                "extractor_retries": 5,
-                "sleep_interval_requests": 1,
+                "quiet": True, "no_warnings": True, "cookiefile": cookie,
+                "format": "bestaudio/best", "noplaylist": True, "socket_timeout": 20,
                 "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
             }
-
             def _extract_url():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     try:
                         info = ydl.extract_info(url, download=False)
-                        if not info:
-                            return None
-
-                        direct = info.get("url")
-                        if direct:
-                            return direct
-
-                        for fmt in info.get("formats", []):
-                            if fmt.get("acodec") != "none" and fmt.get("url"):
-                                return fmt["url"]
-
-                        return info.get("manifest_url")
-                    except Exception as ex:
-                        logger.error(f"Live stream extraction failed: {ex}")
+                        if info:
+                            return info.get("url") or info.get("manifest_url")
+                    except Exception:
                         return None
+            return await asyncio.wait_for(asyncio.to_thread(_extract_url), timeout=35)
 
-            try:
-                stream_url = await asyncio.wait_for(asyncio.to_thread(_extract_url), timeout=35)
-                if stream_url:
-                    logger.info(f"✅ Live stream URL extracted for {video_id}")
-                return stream_url
-            except asyncio.TimeoutError:
-                logger.error(f"Live stream URL extraction timed out for {video_id}")
-                return None
+        # 2. Local Storage ထဲမှာ သီချင်းရှိနှင့်ပြီးသားလား အရင်စစ်မည်
+        existing = self._locate_download_file(video_id, video=video)
+        if existing:
+            return existing
 
-        filename_pattern = f"downloads/{video_id}"
-        
-        existing_files = [
-            f for f in glob.glob(f"{filename_pattern}.*")
-            if not f.endswith('.part')
-        ]
-        
-        if video:
-            video_candidates = [
-                f for f in existing_files
-                if Path(f).suffix.lower() in {".mp4", ".mkv", ".webm", ".mov"}
-            ]
-            if video_candidates:
-                return video_candidates[0]
-        else:
-            audio_candidates = [
-                f for f in existing_files
-                if Path(f).suffix.lower() in {".m4a", ".webm", ".opus", ".mp3", ".ogg", ".wav", ".flac"}
-            ]
-            if audio_candidates:
-                return audio_candidates[0]
+        # 3. ⭐ [핵심 - API FIRST] Cookie နှင့် yt-dlp ကို မစောင့်တော့ဘဲ API ကို တိုက်ရိုက် ဦးစားပေးခေါ်ယူမည်
+        if self.enable_api_fallback:
+            api_result = await self.download_via_api(url, video=video)
+            if api_result:
+                return api_result
 
-            container_fallbacks = [
-                f for f in existing_files
-                if Path(f).suffix.lower() in {".mp4", ".mkv", ".mov"}
-            ]
-            if container_fallbacks:
-                return container_fallbacks[0]
-        
-        downloads_dir = Path("downloads")
-        if not downloads_dir.exists():
-            try:
-                downloads_dir.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                logger.error(f"❌ Cannot create downloads directory: {e}")
-                return None
-
+        # 4. API ပါ လုံးဝအဆင်မပြေတော့မှသာ Local yt-dlp ကို Fallback အနေဖြင့် သုံးမည်
+        logger.info(f"🔄 API Failed or Disabled. Falling back to local yt-dlp for {video_id}")
         async with self._download_semaphore:
             cookie = await self.get_cookies_async()
             base_opts = {
-                "outtmpl": "downloads/%(id)s.%(ext)s",
-                "quiet": True,
-                "noplaylist": True,
-                "geo_bypass": True,
-                "no_warnings": True,
-                "overwrites": False,
-                "nocheckcertificate": True,
-                "continuedl": True,
-                "noprogress": True,
-                "concurrent_fragment_downloads": 4,
-                "http_chunk_size": 524288,
-                "socket_timeout": 30,
-                "retries": 2,
-                "fragment_retries": 2,
-                "extractor_retries": 5,
-                "sleep_interval_requests": 1,
+                "outtmpl": "downloads/%(id)s.%(ext)s", "quiet": True, "noplaylist": True,
+                "geo_bypass": True, "no_warnings": True, "overwrites": False,
+                "socket_timeout": 30, "retries": 2,
                 "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
             }
 
             if video:
                 height_filter = f"[height<={self._max_video_height}]" if self._max_video_height else ""
-                format_chain = (
-                    f"bestvideo[ext=mp4]{height_filter}+bestaudio[ext=m4a]/"
-                    f"bestvideo{height_filter}+bestaudio/"
-                    "bestvideo+bestaudio/best"
-                )
                 ydl_opts = {
-                    **base_opts,
-                    "format": format_chain,
-                    "merge_output_format": "mp4",
-                    "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
+                    **base_opts, "format": f"bestvideo[ext=mp4]{height_filter}+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+                    "merge_output_format": "mp4", "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
                 }
             else:
-                ydl_opts = {
-                    **base_opts,
-                    "format": "bestaudio[ext=m4a]/bestaudio[acodec=opus]/bestaudio/best",
-                    "postprocessors": [],
-                }
+                ydl_opts = {**base_opts, "format": "bestaudio[ext=m4a]/bestaudio/best"}
 
-            ydl_opts_cookie = {
-                **ydl_opts,
-                "cookiefile": cookie,
-            }
+            if cookie:
+                ydl_opts["cookiefile"] = cookie
 
-            def _download(ydl_runtime_opts):
-                ydl_instance = None
+            def _local_download():
                 try:
-                    ydl_instance = yt_dlp.YoutubeDL(ydl_runtime_opts)
-                    info = ydl_instance.extract_info(url, download=True)
-                    if not info:
-                        return None
-                    
-                    time.sleep(0.5)
-                    located = self._locate_download_file(video_id, video=video)
-                    if located:
-                        return located
-                    return None
-                except Exception as ex:
-                    logger.warning(f"⚠️ Download error for {video_id}: {ex}")
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.extract_info(url, download=True)
                     return self._locate_download_file(video_id, video=video)
-                finally:
-                    if ydl_instance:
-                        try:
-                            ydl_instance.close()
-                        except Exception:
-                            pass
+                except Exception:
+                    return self._locate_download_file(video_id, video=video)
 
-            logger.info(f"📥 Downloading {video_id} with cookies...")
-            result = await asyncio.to_thread(_download, ydl_opts_cookie)
-            
-            if not result and self.enable_api_fallback:
-                logger.info(f"🔄 Cookie download failed for {video_id}, trying API fallback...")
-                result = await self.download_via_api(url, video=video)
-            
-            return result
+            return await asyncio.to_thread(_local_download)
