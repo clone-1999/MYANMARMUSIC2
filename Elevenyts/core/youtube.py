@@ -144,9 +144,9 @@ class YouTube:
         file_ext = ".mp4" if video else ".mp3"
         file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}{file_ext}")
 
-        # ဖိုင်ရှိပြီးသားဖြစ်သော်လည်း ဖိုင်အပျက် (5KB အောက်) ဖြစ်နေလျှင် ဖြတ်ထုတ်ပြီး ပြန်ဆွဲရန်
+        # ဖိုင်ရှိပြီးသားဖြစ်သော်လည်း ဖိုင်အပျက် (50KB အောက်) ဖြစ်နေလျှင် ဖြတ်ထုတ်ပြီး ပြန်ဆွဲရန်
         if os.path.exists(file_path):
-            if os.path.getsize(file_path) > 5000:
+            if os.path.getsize(file_path) > 50000:
                 return file_path
             else:
                 try:
@@ -197,8 +197,8 @@ class YouTube:
                             async for chunk in response.content.iter_chunked(16384):
                                 f.write(chunk)
 
-            # ✨ [핵심 ပြင်ဆင်မှု] ရရှိလာသောဖိုင်သည် အမှန်တကယ် အသံဖိုင်ဖြစ်ကြောင်း စစ်ဆေးခြင်း (အနည်းဆုံး ၅KB ရှိရမည်)
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 5000:
+            # ✨ ရရှိလာသောဖိုင်သည် အမှန်တကယ် သီချင်းဖိုင်စစ်စစ် (အနည်းဆုံး 50KB ရှိရမည်) ဖြစ်ကြောင်း စစ်ဆေးခြင်း
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
                 logger.info(f"✅ API Download Success & Verified: {file_path}")
                 return file_path
             else:
@@ -207,7 +207,7 @@ class YouTube:
                         os.remove(file_path)
                     except Exception:
                         pass
-                logger.warning(f"⚠️ API returned an invalid or empty file for {video_id}. Dropping to Local yt-dlp...")
+                logger.warning(f"⚠️ API returned an invalid or empty file for {video_id}.")
                 return None
 
         except Exception as e:
@@ -360,25 +360,34 @@ class YouTube:
                         return None
             return await asyncio.wait_for(asyncio.to_thread(_extract_url), timeout=35)
 
-        # 2. Local Storage ထဲမှာ သီချင်းရှိနှင့်ပြီးသားလား အရင်စစ်မည်
+        # 2. Local Storage ထဲမှာ သီချင်းရှိနှင့်ပြီးသားလား အရင်စစ်မည် (50KB ထက် ကြီးရမည်)
         existing = self._locate_download_file(video_id, video=video)
-        if existing:
+        if existing and os.path.exists(existing) and os.path.getsize(existing) > 50000:
             return existing
 
-        # 3. ⭐ [API FIRST] API ကို အရင်ဆုံး တိုက်ရိုက် ဦးစားပေးခေါ်ယူပြီး သေချာမှ ဖိုင်လမ်းကြောင်း ပြန်ပေးမည်
+        # 3. 🔥 [API FIRST] API ကို အရင်ဆုံး စမ်းသပ်ဒေါင်းလုဒ်လုပ်မည်
         if self.enable_api_fallback:
-            api_result = await self.download_via_api(url, video=video)
-            if api_result:
-                return api_result
+            try:
+                api_result = await self.download_via_api(url, video=video)
+                if api_result and os.path.exists(api_result) and os.path.getsize(api_result) > 50000:
+                    return api_result
+                else:
+                    if api_result and os.path.exists(api_result):
+                        try:
+                            os.remove(api_result)
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.warning(f"⚠️ API Exception caught: {e}")
 
-        # 4. API ပါ လုံးဝအဆင်မပြေတော့မှသာ Local yt-dlp ကို သုံးမည်
-        logger.info(f"🔄 API Failed. Falling back to local yt-dlp for {video_id}")
+        # 4. 🛡️ [Strict Fallback] API အဆင်မပြေပါက Local yt-dlp + FFmpeg ဖြင့် ရအောင် ဆွဲမည်
+        logger.info(f"🔄 API Failed or Returned Invalid File. Falling back strictly to local yt-dlp for {video_id}...")
         async with self._download_semaphore:
             cookie = await self.get_cookies_async()
             base_opts = {
                 "outtmpl": "downloads/%(id)s.%(ext)s", "quiet": True, "noplaylist": True,
-                "geo_bypass": True, "no_warnings": True, "overwrites": False,
-                "socket_timeout": 30, "retries": 2,
+                "geo_bypass": True, "no_warnings": True, "overwrites": True,  # ဖိုင်ဟောင်းပျက်ကို ဖျက်ပြီး ထပ်ရေးရန်
+                "socket_timeout": 30, "retries": 3,
                 "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
             }
 
@@ -389,7 +398,16 @@ class YouTube:
                     "merge_output_format": "mp4", "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
                 }
             else:
-                ydl_opts = {**base_opts, "format": "bestaudio[ext=m4a]/bestaudio/best"}
+                # 🎵 တကယ့် Audio Source သေချာပေါက်ပါဝင်စေရန် FFmpeg Extract Audio ကို မဖြစ်မနေ ထည့်သွင်းထားသည်
+                ydl_opts = {
+                    **base_opts, 
+                    "format": "bestaudio[ext=m4a]/bestaudio/best",
+                    "postprocessors": [{
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "192",
+                    }],
+                }
 
             if cookie:
                 ydl_opts["cookiefile"] = cookie
@@ -399,7 +417,8 @@ class YouTube:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.extract_info(url, download=True)
                     return self._locate_download_file(video_id, video=video)
-                except Exception:
+                except Exception as ex:
+                    logger.error(f"❌ Local yt-dlp download failed completely: {ex}")
                     return self._locate_download_file(video_id, video=video)
 
             return await asyncio.to_thread(_local_download)
