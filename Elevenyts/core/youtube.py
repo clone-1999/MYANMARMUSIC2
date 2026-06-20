@@ -29,7 +29,7 @@ class YouTube:
 
         # --- ပြင်ဆင်သတ်မှတ်ထားသော API နှင့် COOKIE URL များ ---
         self.api_url = "https://artistbots.onrender.com"
-        self.api_key = "Artistbots3eueiX3jMWzy1ZLdYIqDWg"
+        self.api_key = "Artistbots4QUgiSowDdTj2teUYebLx3"
         # ✨ ပိုမိုစိတ်ချရသော Netscape Format စစ်စစ် Cookie Link ကို ပြောင်းလဲပေးထားပါသည်
         self.cookie_url = "https://gist.githubusercontent.com/Aki-Ikeda/d6878b17bbfeb465f24f5a31b402ea10/raw/cookie.txt"
         
